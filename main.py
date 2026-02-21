@@ -26,11 +26,18 @@ app.add_middleware(
 # Global variables for model and encoders
 model = None
 ring_model = None
+bangles_model = None
+necklace_model = None
+earrings_model = None
+
 cat_encoder = None
 purity_encoder = None
 
 MODEL_PATH = "gold_diamond_estimation_model.h5"
 RING_MODEL_PATH = "gold_diamond_estimator.h5"
+BANGLES_MODEL_PATH = "bangles_estimator.keras"
+NECKLACE_MODEL_PATH = "necklace_estimator.keras"
+EARRINGS_MODEL_PATH = "earrings_estimator.keras"
 
 CAT_ENCODER_PATH = "cat_encoder.joblib"
 PURITY_ENCODER_PATH = "purity_encoder.joblib"
@@ -46,7 +53,7 @@ class PatchedDense(tf.keras.layers.Dense):
 
 @app.on_event("startup")
 async def load_artifacts():
-    global model, ring_model, cat_encoder, purity_encoder
+    global model, ring_model, bangles_model, necklace_model, earrings_model, cat_encoder, purity_encoder
     try:
         print(f"Startup: TensorFlow Version: {tf.__version__}")
         try:
@@ -66,12 +73,21 @@ async def load_artifacts():
         else:
             print(f"Error: General Model file not found at {MODEL_PATH}")
 
-        # Load ring model
-        if os.path.exists(RING_MODEL_PATH):
-             ring_model = tf.keras.models.load_model(RING_MODEL_PATH, custom_objects=custom_objects, compile=False)
-             print("Ring Model loaded successfully.")
-        else:
-            print(f"Error: Ring Model file not found at {RING_MODEL_PATH}")
+        # Load category models
+        models_to_load = {
+            "Ring": (RING_MODEL_PATH, "ring_model"),
+            "Bangles": (BANGLES_MODEL_PATH, "bangles_model"),
+            "Necklace": (NECKLACE_MODEL_PATH, "necklace_model"),
+            "Earrings": (EARRINGS_MODEL_PATH, "earrings_model")
+        }
+
+        for model_name, (path, global_var_name) in models_to_load.items():
+            if os.path.exists(path):
+                 loaded_model = tf.keras.models.load_model(path, custom_objects=custom_objects, compile=False)
+                 globals()[global_var_name] = loaded_model
+                 print(f"{model_name} Model loaded successfully.")
+            else:
+                 print(f"Error: {model_name} Model file not found at {path}")
 
         print("Loading encoders...")
         if os.path.exists(CAT_ENCODER_PATH):
@@ -131,7 +147,7 @@ async def predict(
     category: str = Form(...),
     purity: str = Form(...)
 ):
-    if model is None and ring_model is None:
+    if model is None and ring_model is None and bangles_model is None and necklace_model is None and earrings_model is None:
         raise HTTPException(status_code=503, detail="Models not loaded")
 
     # Read image
@@ -144,14 +160,22 @@ async def predict(
     
     # Predict
     try:
+        predictions = None
+        
         if category.lower() == 'ring' and ring_model is not None:
-             # Ring Model expects [X_img, X_purity]
+             # Category Models expect [X_img, X_purity]
              predictions = ring_model.predict([img_array, purity_array])
+        elif category.lower() == 'bangle' and bangles_model is not None:
+             predictions = bangles_model.predict([img_array, purity_array])
+        elif category.lower() == 'necklace' and necklace_model is not None:
+             predictions = necklace_model.predict([img_array, purity_array])
+        elif category.lower() == 'earring' and earrings_model is not None:
+             predictions = earrings_model.predict([img_array, purity_array])
         elif model is not None:
              # General Model expects [X_img, X_tabular]
              predictions = model.predict([img_array, tab_array])
         else:
-             raise HTTPException(status_code=503, detail="Required model not loaded")
+             raise HTTPException(status_code=503, detail=f"Required model for category '{category}' not loaded")
         
         # predictions is a list of arrays: [gold_weight_pred, diamond_weight_pred]
         # safer scalar extraction dealing with potential shape variations

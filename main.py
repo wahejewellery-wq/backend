@@ -10,8 +10,18 @@ import io
 import os
 
 from fastapi.middleware.cors import CORSMiddleware
+from database import engine, Base
+import models
+from routers import users, evaluations
+
+# Create database tables if they don't exist
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Gold & Diamond Estimation API")
+
+# Include routers
+app.include_router(users.router)
+app.include_router(evaluations.router)
 
 # Add CORS Middleware
 app.add_middleware(

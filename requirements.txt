@@ -9,3 +9,8 @@ numpy
 # TensorFlow 2.20.0 to match training environment (Keras 3)
 tensorflow==2.20.0
 aiofiles
+sqlalchemy
+psycopg2-binary
+passlib[bcrypt]
+python-jose
+python-multipart

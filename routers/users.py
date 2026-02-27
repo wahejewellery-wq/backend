@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+import os
+import requests
 import models, schemas, auth
 from database import get_db
 
@@ -33,11 +35,33 @@ def request_otp(req: schemas.OTPRequest, db: Session = Depends(get_db)):
     user.otp_expires_at = expiry
     db.commit()
     
-    # Mock sending the SMS OTP
-    print("-----------------------------------------")
-    print(f"MOCK SMS SENT TO: {user.phone_number}")
-    print(f"YOUR OTP CODE IS: 🚀 {otp} 🚀")
-    print("-----------------------------------------")
+    # Send the SMS OTP via MSG91
+    msg91_auth_key = os.getenv("MSG91_AUTH_KEY")
+    msg91_template_id = os.getenv("MSG91_TEMPLATE_ID")
+
+    if msg91_auth_key and msg91_template_id:
+        try:
+            # MSG91 Send OTP API endpoint
+            # Note: mobile number should include the country code without the '+' sign for MSG91 (e.g., 919876543210)
+            # Remove '+' if it exists to be safe
+            clean_phone = phone.lstrip('+')
+            url = f"https://control.msg91.com/api/v5/otp?template_id={msg91_template_id}&mobile={clean_phone}&otp={otp}"
+            headers = {
+                "authkey": msg91_auth_key,
+                "Content-Type": "application/json"
+            }
+            response = requests.post(url, headers=headers, json={"OTP": otp})
+            print(f"MSG91 SMS sent to {phone}. Response: {response.text}")
+        except Exception as e:
+            print(f"Failed to send MSG91 SMS to {phone}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to send OTP SMS.")
+    else:
+        # Fallback if MSG91 credentials are not configured
+        print("-----------------------------------------")
+        print("WARNING: MSG91 credentials not found in environment.")
+        print(f"MOCK SMS SENT TO: {user.phone_number}")
+        print(f"YOUR OTP CODE IS: 🚀 {otp} 🚀")
+        print("-----------------------------------------")
     
     return {"msg": f"OTP sent successfully to {phone}"}
 
